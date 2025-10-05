@@ -1,92 +1,175 @@
+BFS/DFS direkte.
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Grafalgoritmer: BFS & DFS</title>
-    <style>
-      body { font-family: Arial, sans-serif; }
-      .node { display: inline-block; margin: 5px; }
-    </style>
+  <meta charset="utf-8">
+  <title>Grafalgoritmer: BFS & DFS</title>
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    #mynetwork { width: 700px; height: 500px; border: 1px solid lightgray; margin-bottom: 1em;}
+    #controls { margin-bottom: 1em; }
+    #chosenPath { margin-top: 1em; }
+    button { margin-right: 0.5em;}
+    input { margin: 0.2em; }
+  </style>
 </head>
 <body>
     <h2>BFS & DFS på graf</h2>
-    <div>
-        <label>Rum (adskil med komma): <input id="nodes" value="A,B,C,D,E,F"></label><br>
-        <label>Forbindelser (fx A-B,B-C): <input id="edges" value="A-B,B-C,B-D,D-E,E-F"></label><br>
-        <label>Fra: <input id="from" value="A"></label>
-        <label>Til: <input id="to" value="F"></label>
-        <button onclick="runBFS()">Find korteste vej (BFS)</button>
-        <button onclick="findAP()">Find nøgleknuder (DFS)</button>
+    <div id="controls">
+        <label>Rum (adskil med komma):
+          <input id="nodes" value="A,B,C,D,E,F,G,H,I,J"></label>
+        <label>Forbindelser (fx A-B,B-C):
+          <input id="edges" value="A-B,A-C,B-D,B-E,C-F,C-G,D-H,D-I,E-J"></label>
+        <button onclick="updateGraph()">Opdater graf</button>
+        <button onclick="startTraversal('DFS')">Start DFS</button>
+        <button onclick="startTraversal('BFS')">Start BFS</button>
+        <button onclick="resetPath()">Nulstil</button>
+        <span id="mode"></span>
     </div>
-    <pre id="output"></pre>
+    <div id="mynetwork"></div>
+    <div id="chosenPath">Din valgte vej: <span id="path"></span></div>
+    <div id="nextNodes"></div>
     <script>
-      function parseGraph(nodes, edges) {
-        let graph = {};
-        nodes.split(',').map(n => n.trim()).forEach(n => graph[n] = []);
-        edges.split(',').forEach(e => {
-          let [a, b] = e.trim().split('-');
-          graph[a].push(b); graph[b].push(a);
+      // Globale variabler til grafen
+      var nodes, edgesArr, edges, network, data, options;
+      var traversalMode = null;
+      var path = [];
+      var visited = new Set();
+      var nextStack = [];
+
+      function parseInput() {
+        // Læs inputfelter og lav noder/kanter
+        let nodeNames = document.getElementById('nodes').value.split(',').map(n => n.trim()).filter(n => n.length > 0);
+        let edgePairs = document.getElementById('edges').value.split(',').map(e => e.trim()).filter(e => e.length > 0);
+
+        nodes = new vis.DataSet(nodeNames.map(name => ({id: name, label: name})));
+        edgesArr = edgePairs.map(e => {
+          let [a, b] = e.split('-');
+          return {from: a.trim(), to: b.trim()};
         });
-        return graph;
+        edges = new vis.DataSet(edgesArr);
       }
 
-      function bfs(graph, start, goal) {
-        let queue = [ [start] ], visited = new Set();
-        while (queue.length > 0) {
-          let path = queue.shift(), node = path[path.length-1];
-          if (node === goal) return path;
-          if (!visited.has(node)) {
-            visited.add(node);
-            for (let neighbor of graph[node]) {
-              queue.push([...path, neighbor]);
+      function updateGraph() {
+        parseInput();
+        data = { nodes: nodes, edges: edges };
+        options = {
+          nodes: { shape: 'circle', size: 25, font: { size: 18 } },
+          physics: false,
+          layout: {
+            hierarchical: {
+              enabled: true,
+              direction: 'UD',
+              sortMethod: 'directed'
+            }
+          }
+        };
+        network = new vis.Network(document.getElementById('mynetwork'), data, options);
+        traversalMode = null;
+        path = [];
+        visited = new Set();
+        nextStack = [];
+        document.getElementById('mode').textContent = '';
+        document.getElementById('path').textContent = '';
+        document.getElementById('nextNodes').textContent = '';
+        network.on("click", graphClickHandler);
+      }
+
+      // Find naboer for en node
+      function neighbors(nodeId) {
+        return edgesArr
+          .filter(e => e.from === nodeId || e.to === nodeId)
+          .map(e => (e.from === nodeId ? e.to : e.from));
+      }
+
+      function startTraversal(mode) {
+        traversalMode = mode;
+        path = [];
+        visited = new Set();
+        nextStack = [];
+        document.getElementById('mode').textContent = "Mode: " + mode;
+        document.getElementById('path').textContent = '';
+        document.getElementById('nextNodes').textContent = 'Klik på en node for at starte!';
+      }
+
+      function graphClickHandler(params) {
+        if (!traversalMode) {
+          alert("Vælg BFS eller DFS først!");
+          return;
+        }
+        if (params.nodes.length > 0) {
+          let nodeId = params.nodes[0];
+          // Første klik: start traversal
+          if (path.length === 0) {
+            path.push(nodeId);
+            visited.add(nodeId);
+            update();
+            nextStack = traversalMode === "DFS" ? [nodeId] : [nodeId];
+          } else {
+            // Find næste lovlige noder
+            let legalNexts = getLegalNexts();
+            if (legalNexts.includes(nodeId)) {
+              path.push(nodeId);
+              visited.add(nodeId);
+              if (traversalMode === "DFS") {
+                nextStack.push(nodeId);
+              } else {
+                nextStack.push(nodeId);
+              }
+              update();
             }
           }
         }
-        return null;
       }
 
-      function dfsArticulationPoints(graph) {
-        let time = 0, disc = {}, low = {}, parent = {}, ap = new Set();
-        function dfs(u) {
-          disc[u] = low[u] = ++time;
-          let children = 0;
-          for (let v of graph[u]) {
-            if (!disc[v]) {
-              children++;
-              parent[v] = u;
-              dfs(v);
-              low[u] = Math.min(low[u], low[v]);
-              if ((parent[u] === undefined && children > 1) ||
-                  (parent[u] !== undefined && low[v] >= disc[u]))
-                ap.add(u);
-            } else if (v !== parent[u]) {
-              low[u] = Math.min(low[u], disc[v]);
-            }
-          }
+      function getLegalNexts() {
+        if (traversalMode === "DFS") {
+          if (nextStack.length === 0) return [];
+          let current = nextStack[nextStack.length-1];
+          return neighbors(current).filter(n => !visited.has(n));
+        } else if (traversalMode === "BFS") {
+          if (nextStack.length === 0) return [];
+          let current = nextStack[0];
+          return neighbors(current).filter(n => !visited.has(n));
         }
-        for (let u in graph)
-          if (!disc[u]) dfs(u);
-        return Array.from(ap);
+        return [];
       }
 
-      function runBFS() {
-        let nodes = document.getElementById('nodes').value,
-            edges = document.getElementById('edges').value,
-            from = document.getElementById('from').value,
-            to = document.getElementById('to').value;
-        let graph = parseGraph(nodes, edges);
-        let path = bfs(graph, from, to);
-        document.getElementById('output').textContent =
-          path ? `Korteste vej fra ${from} til ${to}: ${path.join(' → ')}` : "Ingen vej fundet.";
+      function update() {
+        document.getElementById('path').textContent = path.join(" → ");
+        let legalNexts = getLegalNexts();
+        if (legalNexts.length === 0) {
+          document.getElementById('nextNodes').textContent = "Ingen flere noder at besøge.";
+        } else {
+          document.getElementById('nextNodes').textContent = "Mulige næste noder: " + legalNexts.join(", ");
+        }
+        // Highlight valgte noder
+        let updateNodes = nodes.get().map(n => ({
+          id: n.id,
+          color: path.includes(n.id) ? {background: 'lightgreen'} : undefined
+        }));
+        nodes.update(updateNodes);
       }
 
-      function findAP() {
-        let nodes = document.getElementById('nodes').value,
-            edges = document.getElementById('edges').value;
-        let graph = parseGraph(nodes, edges);
-        let aps = dfsArticulationPoints(graph);
-        document.getElementById('output').textContent =
-          aps.length > 0 ? `Nøgleknuder: ${aps.join(', ')}` : "Ingen nøgleknuder fundet.";
+      function resetPath() {
+        traversalMode = null;
+        path = [];
+        visited = new Set();
+        nextStack = [];
+        document.getElementById('mode').textContent = '';
+        document.getElementById('path').textContent = '';
+        document.getElementById('nextNodes').textContent = '';
+        // Fjern farver
+        let updateNodes = nodes.get().map(n => ({
+          id: n.id,
+          color: undefined
+        }));
+        nodes.update(updateNodes);
       }
+
+      // Start med at vise default-graf
+      window.onload = updateGraph;
     </script>
 </body>
 </html>
