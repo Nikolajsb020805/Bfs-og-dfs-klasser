@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Grafalgoritmer: BFS & DFS</title>
+    <style>
+      body { font-family: Arial, sans-serif; }
+      .node { display: inline-block; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h2>BFS & DFS på graf</h2>
+    <div>
+        <label>Rum (adskil med komma): <input id="nodes" value="A,B,C,D,E,F"></label><br>
+        <label>Forbindelser (fx A-B,B-C): <input id="edges" value="A-B,B-C,B-D,D-E,E-F"></label><br>
+        <label>Fra: <input id="from" value="A"></label>
+        <label>Til: <input id="to" value="F"></label>
+        <button onclick="runBFS()">Find korteste vej (BFS)</button>
+        <button onclick="findAP()">Find nøgleknuder (DFS)</button>
+    </div>
+    <pre id="output"></pre>
+    <script>
+      function parseGraph(nodes, edges) {
+        let graph = {};
+        nodes.split(',').map(n => n.trim()).forEach(n => graph[n] = []);
+        edges.split(',').forEach(e => {
+          let [a, b] = e.trim().split('-');
+          graph[a].push(b); graph[b].push(a);
+        });
+        return graph;
+      }
+
+      function bfs(graph, start, goal) {
+        let queue = [ [start] ], visited = new Set();
+        while (queue.length > 0) {
+          let path = queue.shift(), node = path[path.length-1];
+          if (node === goal) return path;
+          if (!visited.has(node)) {
+            visited.add(node);
+            for (let neighbor of graph[node]) {
+              queue.push([...path, neighbor]);
+            }
+          }
+        }
+        return null;
+      }
+
+      function dfsArticulationPoints(graph) {
+        let time = 0, disc = {}, low = {}, parent = {}, ap = new Set();
+        function dfs(u) {
+          disc[u] = low[u] = ++time;
+          let children = 0;
+          for (let v of graph[u]) {
+            if (!disc[v]) {
+              children++;
+              parent[v] = u;
+              dfs(v);
+              low[u] = Math.min(low[u], low[v]);
+              if ((parent[u] === undefined && children > 1) ||
+                  (parent[u] !== undefined && low[v] >= disc[u]))
+                ap.add(u);
+            } else if (v !== parent[u]) {
+              low[u] = Math.min(low[u], disc[v]);
+            }
+          }
+        }
+        for (let u in graph)
+          if (!disc[u]) dfs(u);
+        return Array.from(ap);
+      }
+
+      function runBFS() {
+        let nodes = document.getElementById('nodes').value,
+            edges = document.getElementById('edges').value,
+            from = document.getElementById('from').value,
+            to = document.getElementById('to').value;
+        let graph = parseGraph(nodes, edges);
+        let path = bfs(graph, from, to);
+        document.getElementById('output').textContent =
+          path ? `Korteste vej fra ${from} til ${to}: ${path.join(' → ')}` : "Ingen vej fundet.";
+      }
+
+      function findAP() {
+        let nodes = document.getElementById('nodes').value,
+            edges = document.getElementById('edges').value;
+        let graph = parseGraph(nodes, edges);
+        let aps = dfsArticulationPoints(graph);
+        document.getElementById('output').textContent =
+          aps.length > 0 ? `Nøgleknuder: ${aps.join(', ')}` : "Ingen nøgleknuder fundet.";
+      }
+    </script>
+</body>
+</html>
